@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <stdlib.h>
 #include "stream.h"
 #include "stream-thread.h"
 #include "stream-receiver-internals.h"
@@ -526,6 +527,31 @@ static void stream_receiver_remove_internal(struct stream_thread *sth, struct re
            , rpt->remote_port ? rpt->remote_port : "-"
            , count
            , stream_handshake_error_to_string(reason));
+
+    // -------------------------------------------------------------------------
+    // CUSTOM PATCH: Execute external script on Child Disconnect
+    // -------------------------------------------------------------------------
+    if (rpt->host) {
+        const char *child_hostname = rrdhost_hostname(rpt->host);
+        const char *child_ip = rpt->remote_ip ? rpt->remote_ip : "unknown";
+        const char *reason_str = stream_handshake_error_to_string(reason);
+
+        // Define the script path. Ensure this file exists and is executable by 'netdata' user.
+        char cmd[2048];
+        snprintf(cmd, sizeof(cmd), 
+                 "/etc/netdata/custom-child-disconnect.sh \"%s\" \"%s\" \"%s\" &",
+                 child_hostname, 
+                 child_ip,
+                 reason_str);
+        
+        // Execute the command in the background (via system shell)
+        // We ignore the return code to prevent blocking the streaming thread
+        int ret = system(cmd);
+        (void)ret; // Silence unused variable warnings
+        
+        nd_log(NDLS_DAEMON, NDLP_INFO, "CUSTOM ALERT: Triggered disconnect script for host '%s'", child_hostname);
+    }
+    // -------------------------------------------------------------------------
 
     internal_fatal(META_GET(&sth->run.meta, (Word_t)&rpt->thread.meta) == NULL,
                    "Receiver to be removed is not found in the list of receivers");

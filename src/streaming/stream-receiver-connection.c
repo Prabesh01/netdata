@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <stdlib.h>
 #include "stream.h"
 #include "stream-thread.h"
 #include "stream-receiver-internals.h"
@@ -733,6 +734,24 @@ int stream_receiver_accept_connection(struct web_client *w, char *decoded_query_
         char msg[256];
         stream_receiver_connected_msg(rpt->host, msg, sizeof(msg));
         stream_receiver_log_status(rpt, msg, 0, NDLP_INFO);
+
+        // =========================================================================
+        // CUSTOM PATCH: RECONNECTION NOTIFY
+        // =========================================================================
+        const char *child_hostname = rrdhost_hostname(rpt->host);
+        const char *child_ip = rpt->remote_ip ? rpt->remote_ip : "unknown";
+        
+        char cmd[2048];
+        snprintf(cmd, sizeof(cmd), 
+                 "/etc/netdata/custom-child-disconnect.sh \"%s\" \"%s\" \"CONNECTED\" &", 
+                 child_hostname, 
+                 child_ip);
+        
+        int ret = system(cmd);
+        (void)ret;
+        
+        // =========================================================================
+
 
         // in case we have cloud connection we inform cloud a new child connected
         schedule_node_state_update(rpt->host, 300);
